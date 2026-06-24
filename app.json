@@ -1,0 +1,83 @@
+{
+  "expo": {
+    "name": "출항 알리미",
+    "slug": "weather-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/main.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/main.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.weatherapp.mobile",
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "fetch"
+        ]
+      }
+    },
+    "android": {
+      "package": "com.weatherapp.mobile",
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.WAKE_LOCK",
+        "android.permission.RECORD_AUDIO"
+      ],
+      "adaptiveIcon": {
+        "backgroundColor": "#FFFFFF",
+        "foregroundImage": "./assets/main.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "날씨앱이 현재 위치 기반 날씨를 제공하도록 위치 접근을 허용해 주세요."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "상단 배경 이미지를 선택하려면 사진 접근 권한이 필요합니다."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/main.png",
+          "color": "#1b4f72"
+        }
+      ],
+      [
+        "expo-background-fetch",
+        {
+          "minimumInterval": 21600,
+          "startOnBoot": true,
+          "stopOnTerminate": false
+        }
+      ]
+    ],
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "3bfc7165-6799-438d-a004-c088d0e2a315"
+      }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/3bfc7165-6799-438d-a004-c088d0e2a315"
+    }
+  }
+}
