@@ -22,9 +22,13 @@ export interface TTSTask {
   reject: (error: any) => void;
 }
 
-const CALL_COUNT_KEY = 'antgravity_tts_call_count';
-const LAST_CALL_DATE_KEY = 'antgravity_tts_last_call_date';
-const DAILY_LIMIT = 50; // 일일 구글 API 호출 한도
+const DAILY_CHAR_KEY = 'antgravity_tts_daily_char';
+const MONTHLY_CHAR_KEY = 'antgravity_tts_monthly_char';
+const LAST_DATE_KEY = 'antgravity_tts_last_date';
+const LAST_MONTH_KEY = 'antgravity_tts_last_month';
+
+const DAILY_CHAR_LIMIT = 30000; // 하루 최대 30,000자
+const MONTHLY_CHAR_LIMIT = 900000; // 한 달 최대 900,000자
 
 class AntGravityQueue {
   private queue: TTSTask[] = [];
@@ -80,50 +84,90 @@ class AntGravityQueue {
     }
   }
 
-  // 일일 호출 제한 확인 및 증가
-  private async checkAndIncrementDailyLimit(): Promise<boolean> {
+  // 글자 수 기반 일일 및 월간 제한 검사 및 누적치 증가
+  private async checkAndIncrementCharLimit(charLength: number): Promise<boolean> {
     try {
-      const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-      const lastDate = await AsyncStorage.getItem(LAST_CALL_DATE_KEY);
-      let count = 0;
+      const now = new Date();
+      const today = now.toISOString().split('T')[0]; // YYYY-MM-DD
+      const thisMonth = today.substring(0, 7); // YYYY-MM
 
-      if (lastDate === today) {
-        const storedCount = await AsyncStorage.getItem(CALL_COUNT_KEY);
-        count = storedCount ? parseInt(storedCount, 10) : 0;
+      const lastDate = await AsyncStorage.getItem(LAST_DATE_KEY);
+      const lastMonth = await AsyncStorage.getItem(LAST_MONTH_KEY);
+
+      let dailyCount = 0;
+      let monthlyCount = 0;
+
+      // 1. 월간 리셋 및 불러오기
+      if (lastMonth === thisMonth) {
+        const storedMonthly = await AsyncStorage.getItem(MONTHLY_CHAR_KEY);
+        monthlyCount = storedMonthly ? parseInt(storedMonthly, 10) : 0;
       } else {
-        // 날짜가 변경되었으므로 카운트 리셋
-        await AsyncStorage.setItem(LAST_CALL_DATE_KEY, today);
-        await AsyncStorage.setItem(CALL_COUNT_KEY, '0');
+        await AsyncStorage.setItem(LAST_MONTH_KEY, thisMonth);
+        await AsyncStorage.setItem(MONTHLY_CHAR_KEY, '0');
+        monthlyCount = 0;
       }
 
-      if (count >= DAILY_LIMIT) {
-        console.warn(`AntGravity: 일일 안전 한도(${DAILY_LIMIT}회)를 초과했습니다. API 호출을 차단합니다.`);
+      // 2. 일간 리셋 및 불러오기
+      if (lastDate === today) {
+        const storedDaily = await AsyncStorage.getItem(DAILY_CHAR_KEY);
+        dailyCount = storedDaily ? parseInt(storedDaily, 10) : 0;
+      } else {
+        await AsyncStorage.setItem(LAST_DATE_KEY, today);
+        await AsyncStorage.setItem(DAILY_CHAR_KEY, '0');
+        dailyCount = 0;
+      }
+
+      // 3. 한도 초과 감사
+      if (dailyCount + charLength > DAILY_CHAR_LIMIT) {
+        console.warn(
+          `AntGravity: 일일 안전 글자수 한도(${DAILY_CHAR_LIMIT}자)를 초과합니다. (요청: ${charLength}자, 오늘 누적: ${dailyCount}자)`
+        );
         return false;
       }
 
-      // 한도 카운트 증가
-      await AsyncStorage.setItem(CALL_COUNT_KEY, (count + 1).toString());
+      if (monthlyCount + charLength > MONTHLY_CHAR_LIMIT) {
+        console.warn(
+          `AntGravity: 월간 안전 글자수 한도(${MONTHLY_CHAR_LIMIT}자)를 초과합니다. (요청: ${charLength}자, 이번 달 누적: ${monthlyCount}자)`
+        );
+        return false;
+      }
+
+      // 4. 누적치 합산 저장
+      await AsyncStorage.setItem(DAILY_CHAR_KEY, (dailyCount + charLength).toString());
+      await AsyncStorage.setItem(MONTHLY_CHAR_KEY, (monthlyCount + charLength).toString());
+
+      console.log(
+        `AntGravity: 글자 수 한도 통과. [오늘 누적: ${dailyCount + charLength}/${DAILY_CHAR_LIMIT}자] [이번달 누적: ${monthlyCount + charLength}/${MONTHLY_CHAR_LIMIT}자]`
+      );
       return true;
     } catch (e) {
-      console.error('AntGravity: 일일 한도 체크 에러', e);
-      return true; // 에러 시에는 사용자 사용성 확보를 위해 일단 호출 허용
+      console.error('AntGravity: 글자 수 한도 체크 오류', e);
+      return true; // 예외 상황에서는 서비스 정상 동작 보장을 위해 기본 허용
     }
   }
 
-  // API 호출 실패 시 일일 호출수 롤백 차감
-  private async decrementDailyLimit() {
+  // API 호출 실패 시 글자 수 차감 롤백
+  private async decrementCharLimit(charLength: number) {
     try {
       const today = new Date().toISOString().split('T')[0];
-      const lastDate = await AsyncStorage.getItem(LAST_CALL_DATE_KEY);
+      const thisMonth = today.substring(0, 7);
+
+      const lastDate = await AsyncStorage.getItem(LAST_DATE_KEY);
+      const lastMonth = await AsyncStorage.getItem(LAST_MONTH_KEY);
+
       if (lastDate === today) {
-        const storedCount = await AsyncStorage.getItem(CALL_COUNT_KEY);
-        const count = storedCount ? parseInt(storedCount, 10) : 0;
-        if (count > 0) {
-          await AsyncStorage.setItem(CALL_COUNT_KEY, (count - 1).toString());
-        }
+        const storedDaily = await AsyncStorage.getItem(DAILY_CHAR_KEY);
+        const dailyCount = storedDaily ? parseInt(storedDaily, 10) : 0;
+        await AsyncStorage.setItem(DAILY_CHAR_KEY, Math.max(0, dailyCount - charLength).toString());
+      }
+
+      if (lastMonth === thisMonth) {
+        const storedMonthly = await AsyncStorage.getItem(MONTHLY_CHAR_KEY);
+        const monthlyCount = storedMonthly ? parseInt(storedMonthly, 10) : 0;
+        await AsyncStorage.setItem(MONTHLY_CHAR_KEY, Math.max(0, monthlyCount - charLength).toString());
       }
     } catch (e) {
-      console.error('AntGravity: 일일 한도 롤백 실패', e);
+      console.error('AntGravity: 글자 수 롤백 실패', e);
     }
   }
 
@@ -132,6 +176,7 @@ class AntGravityQueue {
     const safeLocation = task.locationName.replace(/[^a-zA-Z0-9가-힣]/g, '');
     const cacheFileName = `briefing_${safeLocation}_${task.voiceGender}.mp3`;
     const cacheFilePath = CACHE_DIR + cacheFileName;
+    const textLength = task.text.length;
 
     // 1. 로컬 캐시 확인
     const isCached = await this.checkCacheValidity(cacheFilePath);
@@ -144,10 +189,10 @@ class AntGravityQueue {
       };
     }
 
-    // 2. Google Cloud TTS API 호출 전, 일일 호출 한도 체크
-    const withinLimit = await this.checkAndIncrementDailyLimit();
+    // 2. Google Cloud TTS API 호출 전, 글자 수 기반 일일/월간 한도 체크
+    const withinLimit = await this.checkAndIncrementCharLimit(textLength);
     if (!withinLimit) {
-      console.warn('AntGravity: 오늘 치 안전 한도(50회)를 초과하여 구글 API 대신 내장 TTS로 진행합니다.');
+      console.warn('AntGravity: 안전 글자수 한도를 초과하여 구글 API 호출을 차단하고 기기 내장 TTS로 폴백합니다.');
       return {
         useNativeFallback: true,
         text: task.text,
@@ -157,14 +202,14 @@ class AntGravityQueue {
     // 3. Google Cloud TTS API 호출 (지수 백오프 적용)
     if (!task.apiKey) {
       console.warn('AntGravity: 구글 API 키가 설정되지 않았습니다. 내장 TTS로 진행합니다.');
-      await this.decrementDailyLimit();
+      await this.decrementCharLimit(textLength);
       return {
         useNativeFallback: true,
         text: task.text,
       };
     }
 
-    console.log(`AntGravity API Request: ${task.locationName} (${task.voiceGender})`);
+    console.log(`AntGravity API Request: ${task.locationName} (${task.voiceGender}) [${textLength}자]`);
     try {
       const audioBase64 = await this.synthesizeWithBackoff(task.text, task.voiceGender, task.apiKey);
 
@@ -180,7 +225,7 @@ class AntGravityQueue {
       };
     } catch (apiError) {
       console.error('AntGravity API 호출 에러, 내장 TTS로 폴백합니다:', apiError);
-      await this.decrementDailyLimit();
+      await this.decrementCharLimit(textLength);
       return {
         useNativeFallback: true,
         text: task.text,
