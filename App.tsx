@@ -388,8 +388,10 @@ export default function App() {
     await stopBriefing();
     setIsSpeaking(true);
 
-    const waveLvl = waveAlert?.level ?? '보통';
-    const windLvl = windAlert?.level ?? '보통';
+    const currentWaveAlert = getWaveAlert(forecast.current.wind_speed_10m, forecast.current.weather_code);
+    const currentWindAlert = getWindAlert(forecast.current.wind_speed_10m);
+    const waveLvl = currentWaveAlert?.level ?? '보통';
+    const windLvl = currentWindAlert?.level ?? '보통';
 
     const briefingText = `안녕하십니까. 해상 안전 브리핑입니다. 현재 ${
       location.name
@@ -434,7 +436,7 @@ export default function App() {
             await Audio.setAudioModeAsync({
               allowsRecordingIOS: false,
               playsInSilentModeIOS: true,
-              shouldRouteThroughEarpieceAndroid: false,
+              playThroughEarpieceAndroid: false,
               staysActiveInBackground: true,
             });
 
@@ -534,7 +536,7 @@ export default function App() {
         console.error('AntGravity Queue Error:', err);
         setIsSpeaking(false);
       });
-  }, [forecast, location, voiceGender, apiKey, waveAlert, windAlert, stopBriefing]);
+  }, [forecast, location, voiceGender, apiKey, stopBriefing]);
 
   useEffect(() => {
     restartIconAnimations();
